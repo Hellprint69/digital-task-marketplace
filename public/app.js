@@ -1,6 +1,18 @@
 let currentUser = document.getElementById("user-select").value;
 let chatPollingInterval = null;
 
+// Helper: ambil ID pesan terakhir yang sudah dibaca dari localStorage
+function getReadMsgId(taskId) {
+  const key = `read_msg_${currentUser}_${taskId}`;
+  return parseInt(localStorage.getItem(key) || "0");
+}
+
+// Helper: tandai pesan di tugas ini sudah dibaca
+function setReadMsgId(taskId, lastMsgId) {
+  const key = `read_msg_${currentUser}_${taskId}`;
+  localStorage.setItem(key, (lastMsgId || 0).toString());
+}
+
 document.getElementById("user-select").addEventListener("change", (e) => {
   currentUser = e.target.value;
   fetchTasks();
@@ -23,18 +35,26 @@ function closeSubmitModal() {
 }
 
 // Modal Kontrol Chat
-function openChatModal(taskId, taskTitle) {
+function openChatModal(taskId, taskTitle, lastMsgId) {
   document.getElementById("chat-task-id").value = taskId;
   document.getElementById("chat-modal-title").innerText = `Diskusi: ${taskTitle}`;
   document.getElementById("chat-modal").classList.remove("hidden");
 
+  // Tandai sudah dibaca saat modal dibuka
+  if (lastMsgId) {
+    setReadMsgId(taskId, lastMsgId);
+  }
+
   loadMessages(taskId);
 
-  // Auto-refresh pesan setiap 3 detik selagi modal terbuka
+  // Auto-refresh chat tiap 3 detik selama modal terbuka
   if (chatPollingInterval) clearInterval(chatPollingInterval);
   chatPollingInterval = setInterval(() => {
     loadMessages(taskId, false);
   }, 3000);
+
+  // Re-render kartu agar titik merah hilang
+  fetchTasks();
 }
 
 function closeChatModal() {
@@ -63,7 +83,10 @@ async function loadMessages(taskId, showLoading = true) {
     }
 
     box.innerHTML = "";
+    let maxId = 0;
+
     messages.forEach(msg => {
+      if (msg.id > maxId) maxId = msg.id;
       const isMe = msg.sender_name === currentUser;
       const msgEl = document.createElement("div");
       msgEl.className = `flex flex-col ${isMe ? "items-end" : "items-start"}`;
@@ -80,6 +103,11 @@ async function loadMessages(taskId, showLoading = true) {
       `;
       box.appendChild(msgEl);
     });
+
+    // Update read tracker saat chat aktif
+    if (maxId > 0) {
+      setReadMsgId(taskId, maxId);
+    }
 
     if (showLoading) {
       box.scrollTop = box.scrollHeight;
@@ -156,6 +184,13 @@ async function fetchTasks() {
 
       const isMyTaskAsBuyer = task.buyer_name === currentUser;
       const isMyTaskAsSeller = task.taken_by === currentUser;
+
+      // Logika Titik Merah (Unread indicator):
+      // Ada pesan baru jika task punya pesan, pengirim terakhir BUKAN current user, dan ID pesan > yang tersimpan di localStorage
+      const lastReadId = getReadMsgId(task.id);
+      const hasUnread = task.last_msg_id && 
+                        task.last_msg_sender !== currentUser && 
+                        task.last_msg_id > lastReadId;
 
       // Status Badge
       let statusBadge = "";
@@ -238,10 +273,22 @@ async function fetchTasks() {
         `;
       }
 
-      // Tombol Diskusi Chat (bisa diakses di semua tugas)
+      // Tombol Chat dengan indikator Titik Merah
+      const redDotHtml = hasUnread ? `
+        <span class="relative flex h-2 w-2 mr-1">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+        </span>
+      ` : "";
+
       const chatBtnHtml = `
-        <button onclick="openChatModal(${task.id}, '${task.title.replace(/'/g, "\\'")}')" class="w-full mt-2 py-2 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition flex items-center justify-center gap-1.5">
+        <button onclick="openChatModal(${task.id}, '${task.title.replace(/'/g, "\\'")}', ${task.last_msg_id || 0})" 
+                class="w-full mt-2 py-2 rounded-xl border ${
+                  hasUnread ? "border-rose-500/40 bg-rose-500/5 text-rose-300 hover:bg-rose-500/10" : "border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white"
+                } text-xs font-medium transition flex items-center justify-center gap-1.5 relative">
+          ${redDotHtml}
           <span>💬</span> Diskusi / Chat
+          ${hasUnread ? '<span class="text-[10px] text-rose-400 font-bold ml-1">(Pesan Baru)</span>' : ''}
         </button>
       `;
 
@@ -396,6 +443,11 @@ async function completeTask(taskId) {
     alert("Error: " + err.message);
   }
 }
+
+// Polling auto-refresh daftar tugas tiap 10 detik agar titik merah otomatis muncul jika ada pesan masuk
+setInterval(() => {
+  fetchTasks();
+}, 10000);
 
 // Load Awal
 fetchTasks();
