@@ -1,11 +1,24 @@
 export async function onRequestGet({ env }) {
   try {
-    // Ambil data tugas terbaru dari database D1
-    const { results } = await env.DB.prepare(
-      "SELECT * FROM tasks ORDER BY id DESC"
-    ).all();
+    // Ambil data tasks beserta ID dan pengirim pesan terakhir
+    const query = `
+      SELECT 
+        t.*,
+        m.id AS last_msg_id,
+        m.sender_name AS last_msg_sender
+      FROM tasks t
+      LEFT JOIN task_messages m ON m.id = (
+        SELECT id FROM task_messages 
+        WHERE task_id = t.id 
+        ORDER BY id DESC 
+        LIMIT 1
+      )
+      ORDER BY t.id DESC
+    `;
 
-    return new Response(JSON.stringify(results), {
+    const { results } = await env.DB.prepare(query).all();
+
+    return new Response(JSON.stringify(results || []), {
       headers: {
         "Content-Type": "application/json",
         "Cache-Control": "no-store"
