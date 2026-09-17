@@ -1,11 +1,12 @@
 let currentUser = document.getElementById("user-select").value;
+let chatPollingInterval = null;
 
 document.getElementById("user-select").addEventListener("change", (e) => {
   currentUser = e.target.value;
   fetchTasks();
 });
 
-// Modal Kontrol
+// Modal Kontrol Task & Submit
 function openModal() { document.getElementById("task-modal").classList.remove("hidden"); }
 function closeModal() {
   document.getElementById("task-modal").classList.add("hidden");
@@ -19,6 +20,112 @@ function openSubmitModal(taskId) {
 function closeSubmitModal() {
   document.getElementById("submit-modal").classList.add("hidden");
   document.getElementById("submit-data-form").reset();
+}
+
+// Modal Kontrol Chat
+function openChatModal(taskId, taskTitle) {
+  document.getElementById("chat-task-id").value = taskId;
+  document.getElementById("chat-modal-title").innerText = `Diskusi: ${taskTitle}`;
+  document.getElementById("chat-modal").classList.remove("hidden");
+
+  loadMessages(taskId);
+
+  // Auto-refresh pesan setiap 3 detik selagi modal terbuka
+  if (chatPollingInterval) clearInterval(chatPollingInterval);
+  chatPollingInterval = setInterval(() => {
+    loadMessages(taskId, false);
+  }, 3000);
+}
+
+function closeChatModal() {
+  document.getElementById("chat-modal").classList.add("hidden");
+  document.getElementById("chat-form").reset();
+  if (chatPollingInterval) {
+    clearInterval(chatPollingInterval);
+    chatPollingInterval = null;
+  }
+}
+
+// Fetch & Render Pesan Chat
+async function loadMessages(taskId, showLoading = true) {
+  const box = document.getElementById("chat-messages-box");
+  if (showLoading) {
+    box.innerHTML = `<div class="text-center text-slate-500 py-6">Memuat obrolan...</div>`;
+  }
+
+  try {
+    const res = await fetch(`/api/messages?task_id=${taskId}`);
+    const messages = await res.json();
+
+    if (!messages || messages.length === 0) {
+      box.innerHTML = `<div class="text-center text-slate-500 py-8">Belum ada obrolan. Mulai diskusi di bawah!</div>`;
+      return;
+    }
+
+    box.innerHTML = "";
+    messages.forEach(msg => {
+      const isMe = msg.sender_name === currentUser;
+      const msgEl = document.createElement("div");
+      msgEl.className = `flex flex-col ${isMe ? "items-end" : "items-start"}`;
+
+      msgEl.innerHTML = `
+        <span class="text-[10px] text-slate-400 mb-0.5 px-1">${msg.sender_name}</span>
+        <div class="max-w-[80%] rounded-2xl px-3 py-2 text-xs break-words ${
+          isMe 
+            ? "bg-indigo-600 text-white rounded-br-xs shadow-sm" 
+            : "bg-slate-800 text-slate-200 border border-slate-700/80 rounded-bl-xs"
+        }">
+          ${msg.message}
+        </div>
+      `;
+      box.appendChild(msgEl);
+    });
+
+    if (showLoading) {
+      box.scrollTop = box.scrollHeight;
+    }
+  } catch (err) {
+    if (showLoading) {
+      box.innerHTML = `<div class="text-center text-rose-400 py-4">Gagal memuat pesan: ${err.message}</div>`;
+    }
+  }
+}
+
+// Kirim Pesan Chat
+async function handleSendMessage(e) {
+  e.preventDefault();
+  const taskId = document.getElementById("chat-task-id").value;
+  const input = document.getElementById("chat-input");
+  const message = input.value.trim();
+  const btn = document.getElementById("btn-send-chat");
+
+  if (!message) return;
+
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_id: parseInt(taskId),
+        sender_name: currentUser,
+        message: message
+      })
+    });
+
+    if (res.ok) {
+      input.value = "";
+      await loadMessages(taskId, false);
+      const box = document.getElementById("chat-messages-box");
+      box.scrollTop = box.scrollHeight;
+    } else {
+      alert("Gagal mengirim pesan!");
+    }
+  } catch (err) {
+    alert("Error chat: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // Fetch & Render Tugas
@@ -50,7 +157,7 @@ async function fetchTasks() {
       const isMyTaskAsBuyer = task.buyer_name === currentUser;
       const isMyTaskAsSeller = task.taken_by === currentUser;
 
-      // Status Badge Color & Text
+      // Status Badge
       let statusBadge = "";
       if (task.status === "OPEN") {
         statusBadge = `<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-bold px-2.5 py-1 rounded-md">TERSEDIA</span>`;
@@ -67,7 +174,7 @@ async function fetchTasks() {
         isCompleted ? "border-slate-800 opacity-60" : "border-slate-700/60"
       } rounded-2xl p-5 flex flex-col justify-between transition-all`;
 
-      // Area data akun yang dikirim (hanya terlihat jika user adalah buyer pembuat atau seller yang ambil)
+      // Submission Area
       let submissionSection = "";
       if ((isSubmitted || isCompleted) && (isMyTaskAsBuyer || isMyTaskAsSeller)) {
         submissionSection = `
@@ -131,6 +238,13 @@ async function fetchTasks() {
         `;
       }
 
+      // Tombol Diskusi Chat (bisa diakses di semua tugas)
+      const chatBtnHtml = `
+        <button onclick="openChatModal(${task.id}, '${task.title.replace(/'/g, "\\'")}')" class="w-full mt-2 py-2 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition flex items-center justify-center gap-1.5">
+          <span>💬</span> Diskusi / Chat
+        </button>
+      `;
+
       card.innerHTML = `
         <div>
           <div class="flex justify-between items-start gap-2 mb-3">
@@ -152,6 +266,7 @@ async function fetchTasks() {
             ${task.taken_by ? `<span>Seller: <strong class="text-slate-300">${task.taken_by}</strong></span>` : ""}
           </div>
           ${actionHtml}
+          ${chatBtnHtml}
         </div>
       `;
 
