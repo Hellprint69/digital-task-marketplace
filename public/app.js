@@ -1,13 +1,11 @@
 let currentUser = document.getElementById("user-select").value;
 let chatPollingInterval = null;
 
-// Helper: ambil ID pesan terakhir yang sudah dibaca dari localStorage
 function getReadMsgId(taskId) {
   const key = `read_msg_${currentUser}_${taskId}`;
   return parseInt(localStorage.getItem(key) || "0");
 }
 
-// Helper: tandai pesan di tugas ini sudah dibaca
 function setReadMsgId(taskId, lastMsgId) {
   const key = `read_msg_${currentUser}_${taskId}`;
   localStorage.setItem(key, (lastMsgId || 0).toString());
@@ -15,10 +13,25 @@ function setReadMsgId(taskId, lastMsgId) {
 
 document.getElementById("user-select").addEventListener("change", (e) => {
   currentUser = e.target.value;
+  fetchUserBalance();
   fetchTasks();
 });
 
-// Modal Kontrol Task & Submit
+// Ambil Saldo User
+async function fetchUserBalance() {
+  const balanceEl = document.getElementById("user-balance");
+  try {
+    const res = await fetch(`/api/user?username=${encodeURIComponent(currentUser)}`);
+    const data = await res.json();
+    if (res.ok && data) {
+      balanceEl.innerText = `Rp ${Number(data.balance || 0).toLocaleString("id-ID")}`;
+    }
+  } catch (err) {
+    console.error("Gagal load saldo:", err);
+  }
+}
+
+// Modal Kontrol
 function openModal() { document.getElementById("task-modal").classList.remove("hidden"); }
 function closeModal() {
   document.getElementById("task-modal").classList.add("hidden");
@@ -34,26 +47,51 @@ function closeSubmitModal() {
   document.getElementById("submit-data-form").reset();
 }
 
-// Modal Kontrol Chat
+function openTopUpModal() { document.getElementById("topup-modal").classList.remove("hidden"); }
+function closeTopUpModal() { document.getElementById("topup-modal").classList.add("hidden"); }
+
+async function handleTopUp(e) {
+  e.preventDefault();
+  const amount = document.getElementById("topup-amount").value;
+  const btn = document.getElementById("btn-topup");
+  btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: currentUser, amount: parseInt(amount) })
+    });
+
+    if (res.ok) {
+      alert("Top up berhasil!");
+      closeTopUpModal();
+      fetchUserBalance();
+    } else {
+      alert("Top up gagal!");
+    }
+  } catch (err) {
+    alert("Error: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Modal Chat
 function openChatModal(taskId, taskTitle, lastMsgId) {
   document.getElementById("chat-task-id").value = taskId;
   document.getElementById("chat-modal-title").innerText = `Diskusi: ${taskTitle}`;
   document.getElementById("chat-modal").classList.remove("hidden");
 
-  // Tandai sudah dibaca saat modal dibuka
-  if (lastMsgId) {
-    setReadMsgId(taskId, lastMsgId);
-  }
+  if (lastMsgId) setReadMsgId(taskId, lastMsgId);
 
   loadMessages(taskId);
 
-  // Auto-refresh chat tiap 3 detik selama modal terbuka
   if (chatPollingInterval) clearInterval(chatPollingInterval);
   chatPollingInterval = setInterval(() => {
     loadMessages(taskId, false);
   }, 3000);
 
-  // Re-render kartu agar titik merah hilang
   fetchTasks();
 }
 
@@ -66,7 +104,6 @@ function closeChatModal() {
   }
 }
 
-// Fetch & Render Pesan Chat
 async function loadMessages(taskId, showLoading = true) {
   const box = document.getElementById("chat-messages-box");
   if (showLoading) {
@@ -104,22 +141,14 @@ async function loadMessages(taskId, showLoading = true) {
       box.appendChild(msgEl);
     });
 
-    // Update read tracker saat chat aktif
-    if (maxId > 0) {
-      setReadMsgId(taskId, maxId);
-    }
+    if (maxId > 0) setReadMsgId(taskId, maxId);
 
-    if (showLoading) {
-      box.scrollTop = box.scrollHeight;
-    }
+    if (showLoading) box.scrollTop = box.scrollHeight;
   } catch (err) {
-    if (showLoading) {
-      box.innerHTML = `<div class="text-center text-rose-400 py-4">Gagal memuat pesan: ${err.message}</div>`;
-    }
+    if (showLoading) box.innerHTML = `<div class="text-center text-rose-400 py-4">Gagal memuat pesan: ${err.message}</div>`;
   }
 }
 
-// Kirim Pesan Chat
 async function handleSendMessage(e) {
   e.preventDefault();
   const taskId = document.getElementById("chat-task-id").value;
@@ -156,7 +185,7 @@ async function handleSendMessage(e) {
   }
 }
 
-// Fetch & Render Tugas
+// Fetch & Render Daftar Tugas
 async function fetchTasks() {
   const container = document.getElementById("task-list");
   const icon = document.getElementById("refresh-icon");
@@ -185,14 +214,11 @@ async function fetchTasks() {
       const isMyTaskAsBuyer = task.buyer_name === currentUser;
       const isMyTaskAsSeller = task.taken_by === currentUser;
 
-      // Logika Titik Merah (Unread indicator):
-      // Ada pesan baru jika task punya pesan, pengirim terakhir BUKAN current user, dan ID pesan > yang tersimpan di localStorage
       const lastReadId = getReadMsgId(task.id);
       const hasUnread = task.last_msg_id && 
                         task.last_msg_sender !== currentUser && 
                         task.last_msg_id > lastReadId;
 
-      // Status Badge
       let statusBadge = "";
       if (task.status === "OPEN") {
         statusBadge = `<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-bold px-2.5 py-1 rounded-md">TERSEDIA</span>`;
@@ -209,7 +235,6 @@ async function fetchTasks() {
         isCompleted ? "border-slate-800 opacity-60" : "border-slate-700/60"
       } rounded-2xl p-5 flex flex-col justify-between transition-all`;
 
-      // Submission Area
       let submissionSection = "";
       if ((isSubmitted || isCompleted) && (isMyTaskAsBuyer || isMyTaskAsSeller)) {
         submissionSection = `
@@ -223,7 +248,6 @@ async function fetchTasks() {
         `;
       }
 
-      // Action Button Logic
       let actionHtml = "";
       if (task.status === "OPEN") {
         actionHtml = `
@@ -249,13 +273,13 @@ async function fetchTasks() {
         if (isMyTaskAsBuyer) {
           actionHtml = `
             <button onclick="completeTask(${task.id})" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2.5 rounded-xl transition shadow-md shadow-indigo-600/20">
-              ✓ Konfirmasi Akun Sesuai (Selesai)
+              ✓ Konfirmasi Akun Sesuai (Selesaikan & Bayar)
             </button>
           `;
         } else if (isMyTaskAsSeller) {
           actionHtml = `
             <div class="text-center py-2 bg-blue-950/40 rounded-xl text-blue-400 text-xs border border-blue-900/40">
-              Menunggu konfirmasi dari Buyer
+              Menunggu konfirmasi & pembayaran dari Buyer
             </div>
           `;
         } else {
@@ -268,12 +292,11 @@ async function fetchTasks() {
       } else if (isCompleted) {
         actionHtml = `
           <div class="text-center py-2 bg-slate-900/50 rounded-xl text-slate-400 text-xs">
-            ✓ Transaksi telah berhasil diselesaikan
+            ✓ Transaksi selesai & dana telah diteruskan ke seller
           </div>
         `;
       }
 
-      // Tombol Chat dengan indikator Titik Merah
       const redDotHtml = hasUnread ? `
         <span class="relative flex h-2 w-2 mr-1">
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
@@ -371,7 +394,9 @@ async function handleCreateTask(e) {
 
     const result = await res.json();
     if (res.ok) {
+      alert(result.message);
       closeModal();
+      fetchUserBalance();
       fetchTasks();
     } else {
       alert(result.error || "Gagal membuat tugas.");
@@ -420,7 +445,7 @@ async function handleSubmitAccount(e) {
 
 // Buyer Konfirmasi Selesai
 async function completeTask(taskId) {
-  if (!confirm("Pastikan akun sudah dicek dan sesuai. Selesaikan pesanan?")) return;
+  if (!confirm("Pastikan akun sudah dicek dan sesuai. Selesaikan dan cairkan dana ke seller?")) return;
 
   try {
     const res = await fetch("/api/complete-task", {
@@ -435,6 +460,7 @@ async function completeTask(taskId) {
     const result = await res.json();
     if (res.ok) {
       alert(result.message);
+      fetchUserBalance();
       fetchTasks();
     } else {
       alert(result.error || "Gagal konfirmasi tugas.");
@@ -444,10 +470,11 @@ async function completeTask(taskId) {
   }
 }
 
-// Polling auto-refresh daftar tugas tiap 10 detik agar titik merah otomatis muncul jika ada pesan masuk
+// Auto refresh
 setInterval(() => {
   fetchTasks();
 }, 10000);
 
 // Load Awal
+fetchUserBalance();
 fetchTasks();
