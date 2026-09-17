@@ -9,27 +9,30 @@ export async function onRequestPost({ request, env }) {
       });
     }
 
-    // Pastikan yang menyelesaikan adalah buyer pembuat tugas
-    const query = `
-      UPDATE tasks 
-      SET status = 'COMPLETED' 
-      WHERE id = ? AND buyer_name = ? AND status = 'SUBMITTED'
-    `;
-
-    const result = await env.DB.prepare(query)
+    // Ambil detail tugas untuk tahu budget dan siapa sellernya
+    const task = await env.DB.prepare("SELECT * FROM tasks WHERE id = ? AND buyer_name = ? AND status = 'SUBMITTED'")
       .bind(task_id, buyer_name)
-      .run();
+      .first();
 
-    if (result.meta.changes === 0) {
+    if (!task) {
       return new Response(JSON.stringify({ 
-        error: "Gagal menyelesaikan tugas. Hanya buyer terkait yang bisa konfirmasi!" 
+        error: "Tugas tidak ditemukan atau belum dalam status verifikasi akun!" 
       }), {
         status: 403,
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    return new Response(JSON.stringify({ success: true, message: "Transaksi selesai! Terima kasih." }), {
+    // Batch: Update status jadi COMPLETED dan kirim saldo ke seller
+    await env.DB.batch([
+      env.DB.prepare("UPDATE tasks SET status = 'COMPLETED' WHERE id = ?").bind(task_id),
+      env.DB.prepare("UPDATE users SET balance = balance + ? WHERE username = ?").bind(task.budget, task.taken_by)
+    ]);
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: `Transaksi selesai! Dana Rp ${task.budget.toLocaleString("id-ID")} telah diteruskan ke ${task.taken_by}.` 
+    }), {
       headers: { "Content-Type": "application/json" }
     });
   } catch (error) {
