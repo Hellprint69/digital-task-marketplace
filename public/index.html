@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Papan Tugas Akun Digital</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+
+  <!-- Navbar -->
+  <header class="bg-blue-600 text-white shadow-md sticky top-0 z-10">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+      <h1 class="font-bold text-lg">Marketplace Tugas Digital</h1>
+      
+      <!-- Simulasi switch seller untuk ngetes ambil tugas -->
+      <div class="flex items-center space-x-2 text-sm">
+        <label for="seller-select" class="text-blue-100">Kamu login:</label>
+        <select id="seller-select" class="bg-blue-700 text-white rounded px-2 py-1 font-medium focus:outline-none">
+          <option value="Seller A">Seller A</option>
+          <option value="Seller B">Seller B</option>
+          <option value="Seller C">Seller C</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto p-4 sm:p-6">
+    <!-- Header Title & Action -->
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h2 class="text-xl sm:text-2xl font-bold">Daftar Kebutuhan Buyer</h2>
+        <p class="text-gray-500 text-sm">Pilih tugas yang ingin kamu kerjakan.</p>
+      </div>
+      <button onclick="fetchTasks()" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm flex items-center gap-1 transition">
+        🔄 Refresh
+      </button>
+    </div>
+
+    <!-- Grid Container Tugas -->
+    <div id="task-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <p class="text-gray-500">Memuat data tugas...</p>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
