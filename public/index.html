@@ -32,9 +32,15 @@
         <div class="flex items-center bg-slate-800/80 border border-slate-700/70 rounded-lg px-2.5 py-1 text-xs">
           <span class="text-slate-400 mr-2">Login:</span>
           <select id="user-select" class="bg-transparent text-indigo-300 font-semibold focus:outline-none cursor-pointer">
-            <option value="Buyer Jono" class="bg-slate-800 text-white">Buyer (Jono)</option>
-            <option value="Seller A" class="bg-slate-800 text-white" selected>Seller A</option>
-            <option value="Seller B" class="bg-slate-800 text-white">Seller B</option>
+            <optgroup label="Buyer" class="bg-slate-800 text-slate-300">
+              <option value="Buyer Andi" class="bg-slate-800 text-white">Buyer Andi</option>
+              <option value="Buyer Dimas" class="bg-slate-800 text-white">Buyer Dimas</option>
+              <option value="Buyer Jono" class="bg-slate-800 text-white">Buyer Jono</option>
+            </optgroup>
+            <optgroup label="Seller" class="bg-slate-800 text-slate-300">
+              <option value="Seller A" class="bg-slate-800 text-white" selected>Seller A</option>
+              <option value="Seller B" class="bg-slate-800 text-white">Seller B</option>
+            </optgroup>
           </select>
         </div>
 
